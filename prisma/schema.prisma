@@ -1,0 +1,244 @@
+// Prisma schema for Swashub platform
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  AGENT
+  PENDING_PAYMENT
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING_PAYMENT
+  SUSPENDED
+}
+
+enum JobStatus {
+  PENDING
+  ASSIGNED
+  IN_PROGRESS
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum TransactionType {
+  REGISTRATION_FEE
+  EARNING
+  WITHDRAWAL
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+  REJECTED
+}
+
+enum PaymentChannel {
+  MPESA
+  AIRTEL_MONEY
+  BANK_TRANSFER
+  CARD
+  PAYPAL
+}
+
+model User {
+  id            String          @id @default(uuid())
+  name          String
+  email         String          @unique
+  phone         String
+  passwordHash  String
+  role          Role            @default(PENDING_PAYMENT)
+  status        UserStatus      @default(PENDING_PAYMENT)
+  categoryId    String?
+  category      Category?       @relation(fields: [categoryId], references: [id])
+  balance       Float           @default(0.0)
+  mpesaNumber   String?
+  avatarUrl     String?
+  bio           String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relationships
+  assignments   JobAssignment[]
+  submissions   Submission[]
+  transactions  Transaction[]
+  notifications Notification[]
+  sentMessages  Message[]       @relation("SentMessages")
+  payments      Payment[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  description String
+  icon        String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  users       User[]
+  jobs        Job[]
+}
+
+model Job {
+  id          String         @id @default(uuid())
+  title       String
+  description String
+  requirements String[]
+  categoryId  String
+  category    Category       @relation(fields: [categoryId], references: [id])
+  paymentAmount Float        // in KES
+  deadline    DateTime
+  status      JobStatus      @default(PENDING)
+  attachments String[]       // URLs or file paths
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Relationships
+  milestones  Milestone[]
+  assignments JobAssignment[]
+  submissions Submission[]
+  messages    Message[]
+
+  @@index([categoryId])
+  @@index([status])
+}
+
+model Milestone {
+  id          String          @id @default(uuid())
+  jobId       String
+  job         Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      MilestoneStatus @default(PENDING)
+  order       Int             @default(1)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([jobId])
+}
+
+model JobAssignment {
+  id          String    @id @default(uuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  agentId     String
+  agent       User      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  status      JobStatus @default(ASSIGNED)
+  assignedAt  DateTime  @default(now())
+  acceptedAt  DateTime?
+  completedAt DateTime?
+
+  @@unique([jobId, agentId])
+  @@index([agentId])
+  @@index([jobId])
+}
+
+model Submission {
+  id          String    @id @default(uuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  agentId     String
+  agent       User      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  notes       String
+  fileUrls    String[]
+  status      JobStatus @default(SUBMITTED)
+  adminReview String?
+  reviewedAt  DateTime?
+  submittedAt DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([jobId])
+  @@index([agentId])
+}
+
+model Transaction {
+  id              String            @id @default(uuid())
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            TransactionType
+  amount          Float             // in KES
+  status          TransactionStatus @default(PENDING)
+  reference       String            @unique
+  paymentChannel  PaymentChannel?
+  mpesaReceipt    String?
+  notes           String?
+  flutterwaveRef  String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+}
+
+model Payment {
+  id             String          @id @default(uuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactionRef String          @unique
+  flwRef         String?
+  amount         Float           // in KES
+  currency       String          @default("KES")
+  channel        PaymentChannel
+  status         String          // successful, pending, failed
+  customerPhone  String
+  customerEmail  String
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([transactionRef])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // job, payment, review, system, announcement
+  read      Boolean  @default(false)
+  linkUrl   String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  jobId     String?
+  job       Job?     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String?
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+  @@index([senderId])
+}

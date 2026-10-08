@@ -1,0 +1,6 @@
+{
+  "name": "Swashub - Online Job & Agent Platform",
+  "description": "Production-ready paid-registration online job platform connecting verified agents with projects, featuring milestone reviews, Flutterwave & M-Pesa payments, and admin command center.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
